@@ -1,0 +1,7 @@
+__pycache__
+.idea/
+.deepcode/
+test
+素材
+log
+*.log
