@@ -115,9 +115,7 @@ $env:DEEPSEEK_API_KEY="sk-xxxxxxxxxxxxxxxx"
 DEEPSEEK_API_KEY="sk-xxxx" python 素材single.py
 ```
 
-> `.deepcode/` 下的 `settings.json` 是编辑器/客户端自身的配置，与本项目的脚本**无关**，脚本不会读取它。请勿把真实密钥写进会被提交的文件。
 
----
 
 ## 五、使用方法
 
@@ -219,9 +217,6 @@ cache:
 
 **Q：报 `ModuleNotFoundError: No module named 'prompt'`**
 没有在 `src/` 目录下运行。先 `cd src`。
-
-**Q：报 `NameError: name 'tar' is not defined`**
-旧版本的已知缺陷，现已修复。若仍出现，请确认 `tool.py` 第 56 行写入的是 `{zhuti}` 而非 `{tar}`。
 
 **Q：`log/` 里只有一个空文件，没有素材产出**
 说明阶段 1 抛出了异常导致流程中断。查看终端报错信息，常见原因是 API Key 未设置或额度不足。

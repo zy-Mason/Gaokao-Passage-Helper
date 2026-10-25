@@ -113,7 +113,7 @@ def parse_sucai(sucai_str: str) -> str:
         for i, item in enumerate(data["detail"], 1):
             lines.append(f"{i}.{item.get('content', '')}")
             if "tags" in item:
-                lines.append(f"tag: {''.join(item['tags'])} \n")
+                lines.append(f"tag: {' '.join(item['tags'])} \n")
         lines.append("")
 
     for key in ("transcend", "note", "cache"):
