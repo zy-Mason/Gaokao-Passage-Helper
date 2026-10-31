@@ -5,3 +5,5 @@ test
 素材
 log
 *.log
+.qoderignore
+简化素材
