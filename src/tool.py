@@ -1,5 +1,5 @@
-from anthropic import Anthropic
-from openai import OpenAI
+from anthropic import AsyncAnthropic
+from openai import AsyncOpenAI
 from datetime import datetime
 import os
 import re
@@ -33,9 +33,7 @@ def get_file_object(file_path: str,mode :str="a",encoding="utf-8"):
     return open(file_path, mode, encoding=encoding)
 
 
-def _now() -> str:
-    """当前时间，用于在日志里标注记录时刻。"""
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
 
 
 def _demote_headings(text: str, levels: int = 3) -> str:
@@ -90,90 +88,90 @@ def _log_warning(topic: str | None, message: str) -> None:
 
 
 # noinspection bad-argument-type
-def get_anthropic(topic):
+async def get_anthropic(topic):
 
-    client = Anthropic(
-        api_key=os.getenv('DEEPSEEK_API_KEY'),
-        base_url="https://api.deepseek.com/anthropic",
-    )
     messages = [{"role": "user", "content": topic}]
 
-    with client.messages.stream(
-            model="deepseek-flash",
-            max_tokens=100000,
-            system=prompt.mat_finder,
-            messages=messages,
-            output_config={"effort": "high"},
-            tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 90}],
-            tool_choice={"type": "tool", "name": "web_search"},
-    ) as stream:
-        response = stream.get_final_message()
-        thinking_text = "".join(
-            block.thinking for block in response.content if block.type == "thinking"
-        )
+    async with AsyncAnthropic(
+        api_key=os.getenv('DEEPSEEK_API_KEY'),
+        base_url="https://api.deepseek.com/anthropic",
+    ) as client:
+        async with client.messages.stream(
+                model="deepseek-flash",
+                max_tokens=100000,
+                system=prompt.mat_finder,
+                messages=messages,
+                output_config={"effort": "high"},
+                tools=[{"type": "web_search_20250305", "name": "web_search", "max_uses": 90}],
+                tool_choice={"type": "tool", "name": "web_search"},
+        ) as stream:
+            response = await stream.get_final_message()
+            thinking_text = "".join(
+                block.thinking for block in response.content if block.type == "thinking"
+            )
 
-        answer_text = "".join(
-            block.text for block in response.content if block.type == "text"
-        )
+            answer_text = "".join(
+                block.text for block in response.content if block.type == "text"
+            )
     _log_step(topic, "阶段 1 · 检索与素材整理", thinking_text, answer_text)
     return answer_text
 
 
 # noinspection bad-argument-type
-def get_openai(former_answer, topic):
+async def get_openai(former_answer, topic):
     messages = [
         {"role": "system", "content": prompt.fake_mat_finder},
         {"role": "user", "content": topic},
         {"role": "assistant", "content": former_answer},
         {"role": "user", "content": prompt.resformat},
     ]
-    client = OpenAI(
-        api_key=os.getenv('DEEPSEEK_API_KEY'),
-        base_url="https://api.deepseek.com/",
-    )
 
     last_raw = None
-    for attempt in range(MAX_JSON_RETRIES + 1):
-        response = client.chat.completions.create(
-            model="deepseek-flash",
-            messages=messages,
-            stream=False,
-            reasoning_effort="high",
-            extra_body={"thinking": {"type": "enabled"}},
-            response_format={"type": "json_object"},
-            max_tokens=100000,
-            tool_choice="none",
-        )
-        last_raw = response.choices[0].message.content
-        thinking_text = response.choices[0].message.reasoning_content
+    async with AsyncOpenAI(
+        api_key=os.getenv('DEEPSEEK_API_KEY'),
+        base_url="https://api.deepseek.com/",
+    ) as client:
+        for attempt in range(MAX_JSON_RETRIES + 1):
+            response = await client.chat.completions.create(
+                model="deepseek-flash",
+                messages=messages,
+                stream=False,
+                reasoning_effort="high",
+                extra_body={"thinking": {"type": "enabled"}},
+                response_format={"type": "json_object"},
+                max_tokens=100000,
+                tool_choice="none",
+            )
+            last_raw = response.choices[0].message.content
+            thinking_text = response.choices[0].message.reasoning_content
 
-        _log_step(
-            topic,
-            f"阶段 2 · JSON 整理（第 {attempt + 1} 次请求）",
-            thinking_text,
-            last_raw,
-            answer_lang="json",
-        )
+            _log_step(
+                topic,
+                f"阶段 2 · JSON 整理（第 {attempt + 1} 次请求）",
+                thinking_text,
+                last_raw,
+                answer_lang="json",
+            )
 
-        try:
-            parsed = json.loads(last_raw)
-            if not isinstance(parsed, dict):
-                raise ValueError("JSON 顶层必须是对象")
-            return last_raw
-        except (TypeError, ValueError) as exc:
-            error_message = f"{type(exc).__name__}: {exc}"
-            _log_warning(topic, f"JSON 解析失败（第 {attempt + 1} 次请求）：{error_message}")
-            if attempt >= MAX_JSON_RETRIES:
-                break
-            messages.append({"role": "assistant", "content": last_raw or "（空响应）"})
-            messages.append({
-                "role": "user",
-                "content": (
-                    f"你上面的输出不是合法 JSON，解析报错：{error_message}。"
-                    "请修正后重新输出完整 JSON，只输出 JSON 本身，"
-                    "不要输出解释、Markdown 代码块或任何其他内容。"
-                ),
-            })
+            try:
+                parsed = json.loads(last_raw)
+                if not isinstance(parsed, dict):
+                    raise ValueError("JSON 顶层必须是对象")
+                return last_raw
+            except (TypeError, ValueError) as exc:
+                error_message = f"{type(exc).__name__}: {exc}"
+                _log_warning(topic, f"JSON 解析失败（第 {attempt + 1} 次请求）：{error_message}")
+                if attempt >= MAX_JSON_RETRIES:
+                    break
+                messages.append({"role": "assistant", "content": last_raw or "（空响应）"})
+                messages.append({
+                    "role": "user",
+                    "content": (
+                        f"你上面的输出不是合法 JSON，解析报错：{error_message}。"
+                        "请修正后重新输出完整 JSON，只输出 JSON 本身，"
+                        "不要输出解释、Markdown 代码块或任何其他内容。"
+                    ),
+                })
 
     return last_raw
 
@@ -234,4 +232,9 @@ def parse_sucai(raw_json: str, topic: str | None = None) -> str:
             lines.append("")
 
     return "\n".join(lines).strip() + "\n"
+
+
+def _now() -> str:
+    """当前时间，用于在日志里标注记录时刻。"""
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
